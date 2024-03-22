@@ -82,7 +82,7 @@ def icc_brightness(brightness, max_brightness):
         icc_filepath = os.path.join(TEMP_FOLDER, icc_filename)
         subprocess.run([ICC_BRIGHTNESS_GEN, icc_filepath,
                         str(brightness), str(max_brightness)], check=True)
-        subprocess.check_output(['colormgr', 'import-profile', icc_filepath])
+        subprocess.check_output(['colormgr', 'import-profile', icc_filepath], timeout=1)
         object_path = find_profile(icc_filename)
         try:
             subprocess.run(['colormgr', 'device-add-profile',
