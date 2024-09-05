@@ -1,36 +1,58 @@
 #! /usr/bin/env python3
 
 import subprocess
-import traceback
+import json
+import os
 from typing import Optional
+import typing_extensions
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 
-from icc_brightness import icc_brightness
-from icc_brightness import clean
-
-current_brightness: Optional[int] = None
+brightness: Optional[int] = None
 max_brightness: Optional[int] = None
+output: Optional[str] = None
+
+CWD = os.path.dirname(__file__)
+ICC_BRIGHTNESS_GEN = os.path.join(CWD, "icc-brightness-gen")
+TEMP_FOLDER = "/tmp"
+BACKLIGHT_PATH = "/sys/class/backlight/intel_backlight"
+BRIGHTNESS_PATH = os.path.join(BACKLIGHT_PATH, "brightness")
+MAX_BRIGHTNESS_PATH = os.path.join(BACKLIGHT_PATH, "max_brightness")
+KSCREENDOC = "/usr/bin/kscreen-doctor"
 
 
 def update_brightness():
-    global current_brightness
+    global brightness
     global max_brightness
 
     try:
-        if max_brightness is not None and current_brightness is not None:
-            icc_brightness(current_brightness, max_brightness)
+        if max_brightness is not None and brightness is not None:
+            icc_filename = "brightness_%d_%d.icc" % (brightness, max_brightness)
+            icc_filepath = os.path.join(TEMP_FOLDER, icc_filename)
+            subprocess.run(
+                [
+                    ICC_BRIGHTNESS_GEN,
+                    icc_filepath,
+                    str(brightness),
+                    str(max_brightness),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [KSCREENDOC, "output.{}.iccprofile.{}".format(output, icc_filepath)]
+            )
+            # icc_brightness(current_brightness, max_brightness)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         GLib.idle_add(update_brightness)
 
 
 def change_signal_handler(*args, **kwargs):
-    global current_brightness
+    global brightness
     global max_brightness
     match kwargs["member"]:
         case "brightnessChanged":
-            current_brightness = int(args[0])
+            brightness = int(args[0])
             update_brightness()
         case "brightnessMaxChanged":
             if max_brightness is None:
@@ -44,8 +66,15 @@ if __name__ == "__main__":
     DBusGMainLoop(set_as_default=True)
     sb = dbus.SessionBus()
 
-    current_brightness: Optional[int] = None
-    max_brightness: Optional[int] = None
+    with open(BRIGHTNESS_PATH) as infile:
+        brightness: Optional[int] = int(infile.readline())
+    with open(MAX_BRIGHTNESS_PATH) as infile:
+        max_brightness: Optional[int] = int(infile.readline())
+
+    outputs = json.loads(subprocess.run([KSCREENDOC, "-j"], capture_output=True).stdout)
+
+    output = outputs["outputs"][0]["name"]
+
     base_interface = "org.kde.Solid.PowerManagement.Actions.BrightnessControl"
     sb.add_signal_receiver(
         change_signal_handler,
@@ -53,8 +82,6 @@ if __name__ == "__main__":
         interface_keyword="dbus_interface",
         member_keyword="member",
     )
-
-    clean()
 
     loop = GLib.MainLoop()
     loop.run()
