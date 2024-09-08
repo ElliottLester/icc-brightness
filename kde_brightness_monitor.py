@@ -40,7 +40,10 @@ def update_brightness():
                 check=True,
             )
             subprocess.run(
-                [KSCREENDOC, "output.{}.iccprofile.{}".format(output, icc_filepath)]
+                [
+                    KSCREENDOC,
+                    "output.{}.iccprofile.{}".format(output, icc_filepath),
+                ]
             )
             # icc_brightness(current_brightness, max_brightness)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
@@ -71,7 +74,11 @@ if __name__ == "__main__":
     with open(MAX_BRIGHTNESS_PATH) as infile:
         max_brightness: Optional[int] = int(infile.readline())
 
-    outputs = json.loads(subprocess.run([KSCREENDOC, "-j"], capture_output=True).stdout)
+    outputs = json.loads(
+        subprocess.run(
+            [KSCREENDOC, "--platform", "wayland", "-j"], capture_output=True
+        ).stdout
+    )
 
     output = outputs["outputs"][0]["name"]
 
